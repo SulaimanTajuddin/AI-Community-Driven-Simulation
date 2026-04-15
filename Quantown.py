@@ -7,11 +7,15 @@ interact, exchange knowledge, form alliances, and emit events.
 
 Run:
     pip install rich
-    python agent_community_sim.py
+    python Quantown.py
 
 Optional live visual (requires pygame):
     pip install pygame
-    python agent_community_sim.py --visual
+    python Quantown.py --visual
+
+Optional statistics plot (requires matplotlib):
+    pip install matplotlib
+    python Quantown.py --plot
 """
 
 import random
@@ -65,6 +69,7 @@ class SimConfig:
     alliance_ttl:     int   = 120   # ticks before alliance fades
     cooldown_ticks:   int   = 20
     ticks_per_second: int   = 10    # for text mode pacing
+    enable_plot:      bool  = False  # whether to plot statistics at the end
 
 # ── Event system ──────────────────────────────────────────────────────────────
 
@@ -146,6 +151,12 @@ class Simulation:
         self.alliances: list[Alliance] = []
         self.events:   list[Event] = []
         self.stats = defaultdict(int)
+        # For plotting
+        self.ticks_history = []
+        self.messages_history = []
+        self.knowledge_history = []
+        self.alliances_history = []
+        self.active_alliances_history = []
         self._init_agents()
 
     def _init_agents(self):
@@ -219,6 +230,14 @@ class Simulation:
 
         # Expire old alliances
         self.alliances = [al for al in self.alliances if al.is_alive(self.tick)]
+
+        # Record history for plotting
+        if self.cfg.enable_plot:
+            self.ticks_history.append(self.tick)
+            self.messages_history.append(self.stats["messages"])
+            self.knowledge_history.append(self.stats["knowledge"])
+            self.alliances_history.append(self.stats["alliances"])
+            self.active_alliances_history.append(len(self.alliances))
 
     def recent_events(self, n: int = 10) -> list[Event]:
         return self.events[-n:]
@@ -429,11 +448,58 @@ def run_visual(sim: Simulation):
 
     pygame.quit()
 
+# ── Matplotlib statistics plot ────────────────────────────────────────────────
+
+def plot_statistics(sim: Simulation):
+    """Plot simulation statistics over time using matplotlib."""
+    try:
+        import matplotlib.pyplot as plt
+    except ImportError:
+        print("matplotlib not installed. Run: pip install matplotlib")
+        return
+
+    fig, axes = plt.subplots(2, 2, figsize=(12, 8))
+    fig.suptitle("AI Agent Community Simulation Statistics", fontsize=16)
+
+    # Messages over time
+    axes[0, 0].plot(sim.ticks_history, sim.messages_history, color='blue', label='Messages')
+    axes[0, 0].set_title("Messages Sent")
+    axes[0, 0].set_xlabel("Tick")
+    axes[0, 0].set_ylabel("Count")
+    axes[0, 0].grid(True)
+
+    # Knowledge over time
+    axes[0, 1].plot(sim.ticks_history, sim.knowledge_history, color='green', label='Knowledge Transfers')
+    axes[0, 1].set_title("Knowledge Transfers")
+    axes[0, 1].set_xlabel("Tick")
+    axes[0, 1].set_ylabel("Count")
+    axes[0, 1].grid(True)
+
+    # Alliances formed over time
+    axes[1, 0].plot(sim.ticks_history, sim.alliances_history, color='red', label='Alliances Formed')
+    axes[1, 0].set_title("Alliances Formed")
+    axes[1, 0].set_xlabel("Tick")
+    axes[1, 0].set_ylabel("Count")
+    axes[1, 0].grid(True)
+
+    # Active alliances over time
+    axes[1, 1].plot(sim.ticks_history, sim.active_alliances_history, color='orange', label='Active Alliances')
+    axes[1, 1].set_title("Active Alliances")
+    axes[1, 1].set_xlabel("Tick")
+    axes[1, 1].set_ylabel("Count")
+    axes[1, 1].grid(True)
+
+    plt.tight_layout()
+    plt.savefig("simulation_stats.png")
+    print("Statistics plot saved to simulation_stats.png")
+    plt.show()  # Optional, in case display is available
+
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 def main():
     parser = argparse.ArgumentParser(description="AI Agent Community Simulation")
     parser.add_argument("--visual",    action="store_true", help="Use pygame window")
+    parser.add_argument("--plot",      action="store_true", help="Plot statistics at the end (requires matplotlib)")
     parser.add_argument("--agents",    type=int,   default=20,   help="Number of agents")
     parser.add_argument("--ticks",     type=int,   default=300,  help="Total ticks (text mode)")
     parser.add_argument("--delay",     type=float, default=0.05, help="Delay per tick (text mode)")
@@ -447,6 +513,7 @@ def main():
         interaction_radius=args.radius,
         world_width=args.width,
         world_height=args.height,
+        enable_plot=args.plot,
     )
     sim = Simulation(cfg)
 
@@ -458,6 +525,9 @@ def main():
         run_visual(sim)
     else:
         run_text(sim, total_ticks=args.ticks, delay=args.delay)
+
+    if args.plot:
+        plot_statistics(sim)
 
 
 if __name__ == "__main__":
